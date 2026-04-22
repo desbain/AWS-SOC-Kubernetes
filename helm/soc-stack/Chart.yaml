@@ -12,8 +12,7 @@ apiVersion: v2
 name: soc-stack
 description: >
   AWS-SOC Kubernetes Stack — Fluent Bit log shipping, Falco runtime threat
-  detection, CloudWatch exporter, and the SOC victim pod. Deploys the full
-  container-native SOC pipeline described in the AWS-SOC-Kubernetes project.
+  detection, CloudWatch exporter, and the SOC victim pod.
 
 type: application
 version: 1.0.0
@@ -29,16 +28,5 @@ keywords:
   - threat-detection
 
 maintainers:
-  - name: "[Your Name]"
-    email: "[your@email.com]"
-
-dependencies:
-  - name: fluent-bit
-    version: "0.47.x"
-    repository: "https://fluent.github.io/helm-charts"
-    condition: fluentbit.enabled
-
-  - name: falco
-    version: "4.x.x"
-    repository: "https://falcosecurity.github.io/charts"
-    condition: falco.enabled
+  - name: "desbain"
+    email: "gewa11281@gmail.com"

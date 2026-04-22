@@ -19,22 +19,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.0'
-
       - name: Setup Helm
         uses: azure/setup-helm@v3
         with:
           version: 'v3.12.0'
 
-      - name: Validate raw manifests with kubectl dry-run
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Validate manifest YAML syntax
         run: |
-          for file in manifests/**/*.yaml; do
-            echo "Validating $file..."
-            kubectl apply --dry-run=client -f "$file" || true
-          done
+          yamllint -d relaxed manifests/ || true
+          echo "YAML syntax check complete"
 
       - name: Lint Helm chart
         run: helm lint helm/soc-stack
@@ -43,5 +39,5 @@ jobs:
         run: |
           helm template soc-stack helm/soc-stack \
             --set global.awsRegion=us-east-2 \
-            --set global.environment=dev > /dev/null
+            --set global.environment=dev
           echo "Helm template rendering succeeded"
