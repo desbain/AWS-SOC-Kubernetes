@@ -1,0 +1,88 @@
+{{- if .Values.fluentbit.enabled }}
+###############################################################################
+# fluent-bit-configmap.yaml — rendered from values.fluentbit and values.global
+# All hardcoded values from the raw manifest are now injected from values.yaml
+###############################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    app: fluent-bit
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Daemon        Off
+        Log_Level     info
+        Parsers_File  parsers.conf
+
+    [INPUT]
+        Name              tail
+        Tag               soc.auth
+        Path              /var/log/auth.log
+        Parser            syslog
+        DB                /var/log/flb_auth.db
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/*.log
+        Parser            docker
+        DB                /var/log/flb_kube.db
+        Mem_Buf_Limit     50MB
+        Skip_Long_Lines   On
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        Keep_Log            Off
+
+    [FILTER]
+        Name    grep
+        Match   soc.auth
+        Regex   log (Invalid user|Failed password|Permission denied|Connection closed)
+
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               soc.auth
+        region              {{ .Values.global.awsRegion }}
+        log_group_name      {{ .Values.fluentbit.cloudwatch.authLogGroup }}
+        log_stream_prefix   {{ .Values.fluentbit.cloudwatch.authLogStreamPrefix }}
+        auto_create_group   true
+        log_retention_days  {{ .Values.fluentbit.cloudwatch.authLogRetentionDays }}
+
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               kube.*
+        region              {{ .Values.global.awsRegion }}
+        log_group_name      {{ .Values.fluentbit.cloudwatch.containerLogGroup }}
+        log_stream_prefix   {{ .Values.fluentbit.cloudwatch.containerLogStreamPrefix }}
+        auto_create_group   true
+        log_retention_days  {{ .Values.fluentbit.cloudwatch.containerLogRetentionDays }}
+
+  parsers.conf: |
+    [PARSER]
+        Name        syslog
+        Format      regex
+        Regex       ^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
+
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+{{- end }}

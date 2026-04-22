@@ -1,0 +1,13 @@
+###############################################################################
+# namespace.yaml
+# Creates the soc-system namespace — all SOC workloads live here
+# Isolated from kube-system and default namespaces
+###############################################################################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: soc-system
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    project: aws-soc-kubernetes
+    purpose: security-operations

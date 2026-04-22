@@ -1,0 +1,156 @@
+###############################################################################
+# values.yaml — Default values for the soc-stack Helm chart
+#
+# Override per environment:
+#   helm install soc-stack ./helm/soc-stack -f helm/values-prod.yaml
+#
+# Every value here maps to a {{ .Values.x }} reference in a template.
+# Nothing is hardcoded in the templates themselves.
+###############################################################################
+
+# Global settings applied across all components
+global:
+  awsRegion: "eu-north-1"
+  environment: "dev"
+  clusterName: "soc-eks-cluster"
+  owner: "[your-name]"
+
+# Namespace all SOC workloads are deployed into
+namespace:
+  name: soc-system
+  create: true
+
+# -----------------------------------------------------------------------------
+# Fluent Bit — log shipping agent (DaemonSet)
+# Replaces the CloudWatch Agent from the VM-based SOC project
+# -----------------------------------------------------------------------------
+fluentbit:
+  enabled: true
+
+  image:
+    repository: public.ecr.aws/aws-observability/aws-for-fluent-bit
+    tag: stable
+    pullPolicy: Always
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  cloudwatch:
+    # Auth log group — mirrors SOC-Auth-Logs from the baseline project
+    authLogGroup: "SOC-Auth-Logs"
+    authLogStreamPrefix: "eks-node-"
+    authLogRetentionDays: 90
+
+    # Kubernetes container log group
+    containerLogGroup: "/aws/eks/soc-cluster/containers"
+    containerLogStreamPrefix: "pod-"
+    containerLogRetentionDays: 30
+
+  # hostPath volumes — Fluent Bit reads from the node, not the container
+  hostPaths:
+    varLog: /var/log
+    dockerContainers: /var/lib/docker/containers
+
+# -----------------------------------------------------------------------------
+# Falco — kernel-level runtime threat detection (DaemonSet)
+# Intercepts syscalls via eBPF — detects threats before log lines are written
+# -----------------------------------------------------------------------------
+falco:
+  enabled: true
+
+  image:
+    repository: falcosecurity/falco-no-driver
+    tag: latest
+    pullPolicy: Always
+
+  driverLoader:
+    image:
+      repository: falcosecurity/falco-driver-loader
+      tag: latest
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Custom SOC detection rules — see templates/falco-configmap.yaml
+  # Set to false to use only upstream Falco default rules
+  customRules:
+    enabled: true
+
+  # Alert output — stdout for log shipping via Fluent Bit
+  # In production, add a falcosidekick deployment to route to SNS/Slack/PagerDuty
+  output:
+    stdout: true
+    priority: WARNING   # WARNING | ERROR | CRITICAL
+
+# -----------------------------------------------------------------------------
+# CloudWatch Exporter — exposes SOC metrics to Prometheus scraping
+# -----------------------------------------------------------------------------
+cloudwatchExporter:
+  enabled: true
+
+  image:
+    repository: prom/cloudwatch-exporter
+    tag: latest
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  metrics:
+    namespace: "SOC/Authentication"
+    metricName: "FailedPasswordCount"
+    periodSeconds: 60
+
+# -----------------------------------------------------------------------------
+# SOC Victim Pod — attack target for pipeline validation
+# The Kubernetes equivalent of SOC-Victim-Host EC2 from the baseline project
+# Set enabled: false in prod — this is a test target only
+# -----------------------------------------------------------------------------
+socVictim:
+  enabled: true
+
+  image:
+    repository: ubuntu
+    tag: "24.04"
+    pullPolicy: Always
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# -----------------------------------------------------------------------------
+# RBAC — service accounts and cluster roles
+# Always enabled — no workload should run without explicit RBAC
+# -----------------------------------------------------------------------------
+rbac:
+  create: true
+  fluentBitServiceAccount: fluent-bit
+  falcoServiceAccount: falco
+
+# -----------------------------------------------------------------------------
+# Detection thresholds — mirrors the CloudWatch alarm logic
+# alarm fires when failedSshThreshold or more failures occur in thresholdPeriod seconds
+# -----------------------------------------------------------------------------
+detection:
+  failedSshThreshold: 3       # Match SOC-Brute-Force-Alert threshold
+  thresholdPeriod: 60         # 1-minute window
+  alarmName: "SOC-Brute-Force-Alert"
+  snsTopicArn: ""             # Set this to your SNS ARN from the baseline project

@@ -1,0 +1,63 @@
+###############################################################################
+# k8s-destroy.yml — Manual trigger only
+# Removes all SOC workloads from the cluster
+###############################################################################
+
+name: Kubernetes Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: "Type DESTROY to confirm"
+        required: true
+        type: string
+
+env:
+  AWS_REGION: "us-east-2"
+  CLUSTER_NAME: "soc-eks-cluster"
+  NAMESPACE: "soc-system"
+
+jobs:
+  destroy:
+    name: Destroy SOC Workloads
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Validate confirmation
+        if: github.event.inputs.confirm_destroy != 'DESTROY'
+        run: |
+          echo "You must type DESTROY to confirm. Aborting."
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Helm uninstall
+        run: |
+          helm uninstall soc-stack \
+            --namespace ${{ env.NAMESPACE }} || true
+
+      - name: Delete namespace
+        run: |
+          kubectl delete namespace ${{ env.NAMESPACE }} \
+            --ignore-not-found=true

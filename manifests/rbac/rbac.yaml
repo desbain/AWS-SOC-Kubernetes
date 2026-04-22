@@ -1,0 +1,96 @@
+###############################################################################
+# rbac.yaml
+# Least-privilege RBAC for SOC workloads
+# Fluent Bit: reads pod metadata for log enrichment
+# Falco: reads node-level kernel events (DaemonSet — needs elevated access)
+###############################################################################
+
+---
+# Fluent Bit Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: soc-system
+  labels:
+    app: fluent-bit
+    project: aws-soc-kubernetes
+
+---
+# Fluent Bit ClusterRole — read pod/namespace metadata for log enrichment only
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-role
+  labels:
+    app: fluent-bit
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-role
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: soc-system
+
+---
+# Falco Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: falco
+  namespace: soc-system
+  labels:
+    app: falco
+    project: aws-soc-kubernetes
+
+---
+# Falco ClusterRole — needs broader access for kernel-level event reading
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: falco-role
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - namespaces
+      - pods
+      - replicationcontrollers
+      - services
+      - events
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: falco-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: falco-role
+subjects:
+  - kind: ServiceAccount
+    name: falco
+    namespace: soc-system

@@ -1,0 +1,96 @@
+###############################################################################
+# fluent-bit-daemonset.yaml
+# Runs Fluent Bit on every EKS node — one pod per node
+# Mounts host log directories to capture auth.log and container logs
+# Uses the SOC-Host-Logging-Role (via IRSA) to ship to CloudWatch
+#
+# IRSA = IAM Roles for Service Accounts
+# The pod never holds static AWS credentials. Instead it uses a projected
+# service account token that AWS STS exchanges for temporary credentials
+# scoped to CloudWatchAgentServerPolicy only.
+###############################################################################
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: soc-system
+  labels:
+    app: fluent-bit
+    project: aws-soc-kubernetes
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+        project: aws-soc-kubernetes
+    spec:
+      serviceAccountName: fluent-bit
+
+      # Tolerate all taints — run on every node including masters
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
+
+      containers:
+        - name: fluent-bit
+          image: public.ecr.aws/aws-observability/aws-for-fluent-bit:stable
+          imagePullPolicy: Always
+
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: soc-cluster-config
+                  key: aws_region
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+          volumeMounts:
+            # Host log directories — read-only access only
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            # Fluent Bit config from ConfigMap
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/
+            # State DB for tracking file offsets (survives pod restarts)
+            - name: flb-state
+              mountPath: /var/log/flb_state
+
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
+        - name: flb-state
+          hostPath:
+            path: /var/log/flb_state
+            type: DirectoryOrCreate
+
+      # Run as non-root where possible
+      securityContext:
+        runAsNonRoot: false  # Needs root to read /var/log/auth.log on host
+        runAsUser: 0

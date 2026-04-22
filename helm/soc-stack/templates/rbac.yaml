@@ -1,0 +1,86 @@
+{{- if .Values.rbac.create }}
+###############################################################################
+# rbac.yaml — rendered from values.rbac
+# Creates service accounts and ClusterRoles for Fluent Bit and Falco
+###############################################################################
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.rbac.fluentBitServiceAccount }}
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    app: fluent-bit
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-fluent-bit-role
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, pods, nodes]
+    verbs: [get, list, watch]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-fluent-bit-binding
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-fluent-bit-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.rbac.fluentBitServiceAccount }}
+    namespace: {{ include "soc-stack.namespace" . }}
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.rbac.falcoServiceAccount }}
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    app: falco
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-falco-role
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes, namespaces, pods, replicationcontrollers, services, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [daemonsets, deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-falco-binding
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-falco-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.rbac.falcoServiceAccount }}
+    namespace: {{ include "soc-stack.namespace" . }}
+
+{{- end }}

@@ -1,0 +1,110 @@
+###############################################################################
+# falco-configmap.yaml
+# Falco is the Kubernetes equivalent of the CloudWatch Metric Filter + Alarm.
+# It reads kernel syscalls in real-time using eBPF and fires alerts when
+# behaviour matches a detection rule.
+#
+# Why Falco in K8s instead of CloudWatch Metric Filter?
+# CloudWatch Metric Filters work on text log lines after the fact.
+# Falco intercepts syscalls at the kernel level — it catches an attacker
+# spawning a shell inside a container BEFORE the log line is even written.
+# This is runtime threat detection, not log-based detection.
+###############################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-rules
+  namespace: soc-system
+  labels:
+    app: falco
+    project: aws-soc-kubernetes
+data:
+  soc_rules.yaml: |
+    ###########################################################################
+    # SOC Custom Falco Rules
+    # These rules mirror the threat scenarios from the AWS-SOC baseline project
+    ###########################################################################
+
+    # Rule 1: SSH Brute Force Detection
+    # Equivalent to: CloudWatch Metric Filter + SOC-Brute-Force-Alert alarm
+    - rule: SOC SSH Brute Force Attempt
+      desc: >
+        Detects repeated failed SSH authentication attempts on a node.
+        Mirrors the SOC-Brute-Force-Alert threshold logic from the baseline project.
+      condition: >
+        spawned_process and
+        proc.name = "sshd" and
+        proc.args contains "Invalid user"
+      output: >
+        SSH brute force attempt detected
+        (user=%user.name ip=%fd.rip port=%fd.rport node=%k8s.node.name
+        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      priority: WARNING
+      tags: [soc, ssh, brute_force, mitre_credential_access]
+
+    # Rule 2: Shell Spawned Inside a Container
+    # This has no equivalent in the VM-based SOC — it's a K8s-native threat
+    - rule: SOC Shell in Container
+      desc: >
+        A shell was spawned inside a running container. This is a strong
+        indicator of an attacker who has broken out of the application layer
+        and is now executing arbitrary commands inside the container.
+      condition: >
+        spawned_process and
+        container and
+        proc.name in (bash, sh, zsh, dash, ksh) and
+        not proc.pname in (containerd, dockerd, runc)
+      output: >
+        Shell spawned in container
+        (shell=%proc.name parent=%proc.pname image=%container.image.repository
+        pod=%k8s.pod.name namespace=%k8s.ns.name node=%k8s.node.name)
+      priority: CRITICAL
+      tags: [soc, container_escape, shell, mitre_execution]
+
+    # Rule 3: Privilege Escalation — sudo inside container
+    - rule: SOC Sudo in Container
+      desc: >
+        A process inside a container attempted to use sudo. Containers should
+        run as non-root. Any sudo usage indicates privilege escalation attempt.
+      condition: >
+        spawned_process and
+        container and
+        proc.name = "sudo"
+      output: >
+        Sudo used inside container
+        (user=%user.name container=%container.name
+        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      priority: ERROR
+      tags: [soc, privilege_escalation, sudo, mitre_privilege_escalation]
+
+    # Rule 4: Unexpected outbound connection from SOC namespace
+    - rule: SOC Unexpected Outbound Connection
+      desc: >
+        A process in the soc-system namespace initiated an unexpected outbound
+        network connection. Could indicate a reverse shell or C2 beacon.
+      condition: >
+        outbound and
+        k8s.ns.name = "soc-system" and
+        not proc.name in (fluent-bit, falco, aws-cloudwatch-exporter)
+      output: >
+        Unexpected outbound connection from SOC namespace
+        (proc=%proc.name connection=%fd.name
+        pod=%k8s.pod.name node=%k8s.node.name)
+      priority: WARNING
+      tags: [soc, network, c2, mitre_command_and_control]
+
+    # Rule 5: CloudTrail / Audit Log Tampering
+    - rule: SOC Audit Log File Modified
+      desc: >
+        A process attempted to write to or delete a system log file.
+        Mirrors the CloudTrail integrity validation use case from the baseline.
+      condition: >
+        open_write and
+        fd.name in (/var/log/auth.log, /var/log/syslog, /var/log/kern.log) and
+        not proc.name in (syslog, rsyslog, journald, fluent-bit)
+      output: >
+        Audit log file tampered
+        (proc=%proc.name file=%fd.name user=%user.name
+        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      priority: CRITICAL
+      tags: [soc, log_tampering, defense_evasion, mitre_defense_evasion]

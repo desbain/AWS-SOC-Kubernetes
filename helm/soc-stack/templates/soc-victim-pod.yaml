@@ -1,0 +1,73 @@
+{{- if .Values.socVictim.enabled }}
+###############################################################################
+# soc-victim-pod.yaml — Attack target pod, disabled in prod via values
+# values.socVictim.enabled = false in values-prod.yaml
+###############################################################################
+
+---
+# Cluster-wide config consumed by Fluent Bit and other components
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc-cluster-config
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+data:
+  aws_region: {{ .Values.global.awsRegion | quote }}
+  cluster_name: {{ .Values.global.clusterName | quote }}
+  environment: {{ .Values.global.environment | quote }}
+  log_group_auth: {{ .Values.fluentbit.cloudwatch.authLogGroup | quote }}
+  alarm_name: {{ .Values.detection.alarmName | quote }}
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: soc-victim-pod
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    app: soc-victim
+    role: attack-surface
+  annotations:
+    note: "Test target only — set socVictim.enabled=false in prod"
+spec:
+  containers:
+    - name: soc-victim
+      image: "{{ .Values.socVictim.image.repository }}:{{ .Values.socVictim.image.tag }}"
+      imagePullPolicy: {{ .Values.socVictim.image.pullPolicy }}
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          apt-get update -qq && \
+          apt-get install -y openssh-server -qq && \
+          mkdir -p /run/sshd && \
+          echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+          /usr/sbin/sshd -D
+      ports:
+        - containerPort: 22
+          name: ssh
+      securityContext:
+        allowPrivilegeEscalation: false
+      resources:
+        {{- toYaml .Values.socVictim.resources | nindent 8 }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soc-victim-service
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: soc-victim
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: 22
+  type: ClusterIP
+
+{{- end }}

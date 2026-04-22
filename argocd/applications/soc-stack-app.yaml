@@ -1,0 +1,98 @@
+###############################################################################
+# soc-stack-app.yaml — ArgoCD Application
+#
+# This is the core GitOps object. It tells ArgoCD:
+#   - WHERE the desired state lives (your Git repo + path)
+#   - WHERE to deploy it (which cluster + namespace)
+#   - HOW to deploy it (Helm, with which values file)
+#   - WHEN to sync (automated, on every push)
+#
+# Once applied, ArgoCD continuously reconciles the cluster against Git.
+# If someone runs kubectl directly and drifts the cluster, ArgoCD detects
+# it and reverts it — Git is always the authority.
+###############################################################################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: soc-stack
+  namespace: argocd
+  labels:
+    project: aws-soc-kubernetes
+    managed-by: argocd
+  # Ensures ArgoCD cleans up all deployed resources when this App is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: soc-alerts
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: soc-alerts
+
+spec:
+  project: soc-project
+
+  # --- Source: your Git repo, pointing at the Helm chart ---
+  source:
+    # Replace with your actual GitHub repo URL
+    repoURL: "https://github.com/<YOUR_USERNAME>/aws-soc-kubernetes.git"
+
+    # Branch ArgoCD watches — push to this branch to trigger a sync
+    targetRevision: main
+
+    # Path inside the repo where the Helm chart lives
+    path: helm/soc-stack
+
+    helm:
+      # Use dev values by default
+      # Switch to values-prod.yaml for production deployment
+      valueFiles:
+        - ../../helm/values.yaml
+
+      # Inline value overrides — these take precedence over valueFiles
+      # Useful for injecting environment-specific secrets without committing them
+      parameters:
+        - name: global.environment
+          value: dev
+        - name: global.clusterName
+          value: soc-eks-cluster
+        - name: global.awsRegion
+          value: eu-north-1
+
+  # --- Destination: the EKS cluster, soc-system namespace ---
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: soc-system
+
+  # --- Sync Policy: automated GitOps ---
+  syncPolicy:
+    automated:
+      # Automatically sync when Git diverges from cluster state
+      prune: true        # Delete resources removed from Git
+      selfHeal: true     # Revert manual kubectl changes (drift correction)
+      allowEmpty: false  # Never sync an empty state (safeguard against accidents)
+
+    syncOptions:
+      - CreateNamespace=true           # Create soc-system if it doesn't exist
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true                 # Delete old resources after new ones are healthy
+      - ApplyOutOfSyncOnly=true        # Only apply resources that are actually out of sync
+
+    # Retry logic — handles transient API server errors during sync
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # --- Health and diff settings ---
+  revisionHistoryLimit: 10
+
+  # Ignore differences in fields that Kubernetes mutates automatically
+  ignoreDifferences:
+    - group: apps
+      kind: DaemonSet
+      jsonPointers:
+        - /spec/template/metadata/annotations
+    - group: ""
+      kind: ServiceAccount
+      jsonPointers:
+        - /secrets
