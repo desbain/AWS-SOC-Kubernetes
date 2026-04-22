@@ -12,7 +12,7 @@ CLUSTER_NAME="soc-eks-cluster"
 REGION="us-east-2"
 NODE_TYPE="t3.medium"
 NODE_COUNT=2
-K8S_VERSION="1.29"
+K8S_VERSION="1.32"
 
 echo "======================================================"
 echo " AWS-SOC-Kubernetes | EKS Cluster Provisioning"
