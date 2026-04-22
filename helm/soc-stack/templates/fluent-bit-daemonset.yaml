@@ -1,0 +1,77 @@
+{{- if .Values.fluentbit.enabled }}
+###############################################################################
+# fluent-bit-daemonset.yaml — DaemonSet rendered from values.fluentbit
+###############################################################################
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    app: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+        {{- include "soc-stack.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.rbac.fluentBitServiceAccount }}
+
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
+
+      containers:
+        - name: fluent-bit
+          image: "{{ .Values.fluentbit.image.repository }}:{{ .Values.fluentbit.image.tag }}"
+          imagePullPolicy: {{ .Values.fluentbit.image.pullPolicy }}
+
+          env:
+            - name: AWS_REGION
+              value: {{ .Values.global.awsRegion }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          resources:
+            {{- toYaml .Values.fluentbit.resources | nindent 12 }}
+
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/
+            - name: flb-state
+              mountPath: /var/log/flb_state
+
+      volumes:
+        - name: varlog
+          hostPath:
+            path: {{ .Values.fluentbit.hostPaths.varLog }}
+        - name: varlibdockercontainers
+          hostPath:
+            path: {{ .Values.fluentbit.hostPaths.dockerContainers }}
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
+        - name: flb-state
+          hostPath:
+            path: /var/log/flb_state
+            type: DirectoryOrCreate
+
+      securityContext:
+        runAsUser: 0
+
+{{- end }}

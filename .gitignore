@@ -1,0 +1,15 @@
+# Kubernetes secrets
+*secret*.yaml
+*.kubeconfig
+
+# Helm
+charts/
+*.tgz
+
+# AWS credentials
+.aws/
+credentials
+
+# OS
+.DS_Store
+Thumbs.db

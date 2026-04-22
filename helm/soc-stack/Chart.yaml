@@ -1,0 +1,32 @@
+###############################################################################
+# Chart.yaml
+# AWS-SOC Helm Chart — packages the entire SOC stack as a single deployable unit
+#
+# Why Helm over raw manifests?
+# Raw manifests are static. Helm templates let you deploy the same chart to
+# dev, staging, and prod with different values (thresholds, regions, replicas)
+# without duplicating any YAML. The chart is also versioned — you can roll back
+# to a previous SOC configuration in seconds with `helm rollback`.
+###############################################################################
+apiVersion: v2
+name: soc-stack
+description: >
+  AWS-SOC Kubernetes Stack — Fluent Bit log shipping, Falco runtime threat
+  detection, CloudWatch exporter, and the SOC victim pod.
+
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - security
+  - soc
+  - falco
+  - fluent-bit
+  - cloudwatch
+  - ebpf
+  - threat-detection
+
+maintainers:
+  - name: "desbain"
+    email: "gewa11281@gmail.com"

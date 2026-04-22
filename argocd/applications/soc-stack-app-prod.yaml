@@ -1,0 +1,60 @@
+###############################################################################
+# soc-stack-app-prod.yaml — ArgoCD Application for Production
+#
+# Mirrors soc-stack-app.yaml but with:
+#   - prod values file
+#   - manual sync (requires human approval before applying to prod)
+#   - socVictim disabled
+###############################################################################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: soc-stack-prod
+  namespace: argocd
+  labels:
+    project: aws-soc-kubernetes
+    environment: prod
+    managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  project: soc-project
+
+  source:
+    repoURL: "https://github.com/<YOUR_USERNAME>/aws-soc-kubernetes.git"
+    targetRevision: main
+    path: helm/soc-stack
+    helm:
+      valueFiles:
+        - ../../helm/values-prod.yaml
+      parameters:
+        - name: global.environment
+          value: prod
+        - name: global.clusterName
+          value: soc-eks-cluster
+        - name: global.awsRegion
+          value: eu-north-1
+        - name: socVictim.enabled
+          value: "false"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: soc-system
+
+  syncPolicy:
+    # Production: MANUAL sync only — a human must approve each deployment
+    # Remove this block and add automated: {} to enable auto-sync in prod
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+  revisionHistoryLimit: 20

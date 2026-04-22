@@ -1,0 +1,81 @@
+###############################################################################
+# cloudwatch-exporter-deployment.yaml
+# Exposes CloudWatch metrics to the Kubernetes cluster via Prometheus scraping
+# Allows the K8s-native monitoring stack to consume SOC alarm state
+###############################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudwatch-exporter
+  namespace: soc-system
+  labels:
+    app: cloudwatch-exporter
+    project: aws-soc-kubernetes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudwatch-exporter
+  template:
+    metadata:
+      labels:
+        app: cloudwatch-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9106"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: fluent-bit  # Reuses the IRSA role with CloudWatch read access
+
+      containers:
+        - name: cloudwatch-exporter
+          image: prom/cloudwatch-exporter:latest
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 9106
+              name: metrics
+
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: soc-cluster-config
+                  key: aws_region
+
+          volumeMounts:
+            - name: config
+              mountPath: /config/config.yml
+              subPath: config.yml
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+      volumes:
+        - name: config
+          configMap:
+            name: cloudwatch-exporter-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudwatch-exporter-config
+  namespace: soc-system
+data:
+  config.yml: |
+    region: eu-north-1
+    metrics:
+      - aws_namespace: SOC/Authentication
+        aws_metric_name: FailedPasswordCount
+        aws_dimensions: []
+        aws_statistics: [Sum]
+        aws_period_seconds: 60
+        aws_tag_select:
+          tag_selection:
+            Project: ["AWS-SOC"]

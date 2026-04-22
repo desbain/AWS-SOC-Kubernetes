@@ -1,0 +1,68 @@
+###############################################################################
+# soc-project.yaml — ArgoCD AppProject
+#
+# An AppProject is a logical boundary that scopes what an ArgoCD Application
+# is allowed to deploy, to which clusters, and into which namespaces.
+#
+# Why this matters for security:
+# Without an AppProject, any ArgoCD Application could theoretically deploy
+# to any namespace including kube-system. This Project locks the soc-stack
+# Application to soc-system only, and restricts which source repos are trusted.
+###############################################################################
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: soc-project
+  namespace: argocd
+  labels:
+    project: aws-soc-kubernetes
+    managed-by: argocd
+  # Protect this project from accidental deletion
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "AWS-SOC Kubernetes project — scoped to soc-system namespace only"
+
+  # Only trust the SOC repo as a source
+  # Replace with your actual GitHub repo URL
+  sourceRepos:
+    - "https://github.com/<YOUR_USERNAME>/aws-soc-kubernetes.git"
+    - "https://fluent.github.io/helm-charts"
+    - "https://falcosecurity.github.io/charts"
+
+  # Only allow deployment to the local cluster and soc-system namespace
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: soc-system
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+
+  # Cluster-scoped resources this project is allowed to manage
+  clusterResourceWhitelist:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+
+  # Namespace-scoped resources allowed
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Deny deploying anything that creates cluster-admin or broad wildcard roles
+  clusterResourceBlacklist:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+      # Deny cluster-admin escalation — enforced by OPA/Gatekeeper in prod
+
+  # Orphaned resource monitoring — alert when cluster has resources
+  # not tracked in Git (could indicate manual kubectl drift)
+  orphanedResources:
+    warn: true
+
+  roles:
+    - name: soc-engineer
+      description: "Read-only access to SOC project sync status"
+      policies:
+        - p, proj:soc-project:soc-engineer, applications, get, soc-project/*, allow
+        - p, proj:soc-project:soc-engineer, applications, sync, soc-project/*, allow

@@ -1,0 +1,90 @@
+{{- if and .Values.falco.enabled .Values.falco.customRules.enabled }}
+###############################################################################
+# falco-configmap.yaml — SOC custom detection rules rendered via Helm
+# The detection threshold (failedSshThreshold) is injected from values.yaml
+###############################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-rules
+  namespace: {{ include "soc-stack.namespace" . }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    app: falco
+data:
+  soc_rules.yaml: |
+    # SOC Custom Falco Rules — soc-stack Helm chart
+    # Threshold: {{ .Values.detection.failedSshThreshold }} failed attempts in {{ .Values.detection.thresholdPeriod }}s
+    # Environment: {{ .Values.global.environment }}
+
+    - rule: SOC SSH Brute Force Attempt
+      desc: >
+        Detects repeated failed SSH authentication on a node.
+        Alarm threshold mirrors {{ .Values.detection.alarmName }} (>= {{ .Values.detection.failedSshThreshold }} in {{ .Values.detection.thresholdPeriod }}s).
+      condition: >
+        spawned_process and
+        proc.name = "sshd" and
+        proc.args contains "Invalid user"
+      output: >
+        SSH brute force attempt detected
+        (user=%user.name ip=%fd.rip port=%fd.rport
+        node=%k8s.node.name pod=%k8s.pod.name namespace=%k8s.ns.name
+        env={{ .Values.global.environment }})
+      priority: WARNING
+      tags: [soc, ssh, brute_force, mitre_credential_access]
+
+    - rule: SOC Shell in Container
+      desc: >
+        A shell was spawned inside a running container.
+        Strong indicator of post-exploitation activity.
+      condition: >
+        spawned_process and container and
+        proc.name in (bash, sh, zsh, dash, ksh) and
+        not proc.pname in (containerd, dockerd, runc)
+      output: >
+        Shell spawned in container
+        (shell=%proc.name parent=%proc.pname
+        image=%container.image.repository
+        pod=%k8s.pod.name namespace=%k8s.ns.name
+        node=%k8s.node.name)
+      priority: CRITICAL
+      tags: [soc, container_escape, shell, mitre_execution]
+
+    - rule: SOC Sudo in Container
+      desc: Privilege escalation attempt — sudo used inside a container.
+      condition: >
+        spawned_process and container and proc.name = "sudo"
+      output: >
+        Sudo used inside container
+        (user=%user.name container=%container.name
+        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      priority: ERROR
+      tags: [soc, privilege_escalation, sudo, mitre_privilege_escalation]
+
+    - rule: SOC Unexpected Outbound Connection
+      desc: Unexpected outbound connection from soc-system namespace — possible C2 beacon.
+      condition: >
+        outbound and
+        k8s.ns.name = "{{ .Values.namespace.name }}" and
+        not proc.name in (fluent-bit, falco, aws-cloudwatch-exporter)
+      output: >
+        Unexpected outbound from SOC namespace
+        (proc=%proc.name connection=%fd.name
+        pod=%k8s.pod.name node=%k8s.node.name)
+      priority: WARNING
+      tags: [soc, network, c2, mitre_command_and_control]
+
+    - rule: SOC Audit Log File Modified
+      desc: Auth or syslog file tampered — mirrors CloudTrail integrity validation.
+      condition: >
+        open_write and
+        fd.name in (/var/log/auth.log, /var/log/syslog, /var/log/kern.log) and
+        not proc.name in (syslog, rsyslog, journald, fluent-bit)
+      output: >
+        Audit log tampered
+        (proc=%proc.name file=%fd.name user=%user.name
+        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      priority: CRITICAL
+      tags: [soc, log_tampering, defense_evasion, mitre_defense_evasion]
+
+{{- end }}

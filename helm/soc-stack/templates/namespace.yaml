@@ -1,0 +1,12 @@
+{{- if .Values.namespace.create }}
+###############################################################################
+# namespace.yaml — rendered by Helm from values.namespace
+###############################################################################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace.name }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+    purpose: security-operations
+{{- end }}

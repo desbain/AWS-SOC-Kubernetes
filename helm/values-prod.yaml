@@ -1,0 +1,39 @@
+###############################################################################
+# values-prod.yaml — Production overrides for the soc-stack Helm chart
+# Usage: helm upgrade --install soc-stack ./helm/soc-stack -f helm/values-prod.yaml
+#
+# Only override what differs from values.yaml defaults.
+# Prod differences: tighter resources, higher thresholds, victim pod disabled.
+###############################################################################
+
+global:
+  environment: "prod"
+
+# Disable the victim pod in production — it is a test target only
+socVictim:
+  enabled: false
+
+# Tighter detection threshold in prod — 5 attempts, evaluated across 2 windows
+detection:
+  failedSshThreshold: 5
+  thresholdPeriod: 60
+  snsTopicArn: "arn:aws:sns:eu-north-1:<YOUR_ACCOUNT_ID>:SOC-Alert-Notification"
+
+# Higher Falco alert priority in prod — suppress INFO noise
+falco:
+  output:
+    priority: ERROR
+
+# More headroom for Fluent Bit in prod — higher log volume expected
+fluentbit:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+
+  cloudwatch:
+    authLogRetentionDays: 365    # 1 year retention in prod
+    containerLogRetentionDays: 90

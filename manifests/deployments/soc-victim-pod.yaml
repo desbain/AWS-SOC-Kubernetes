@@ -1,0 +1,81 @@
+###############################################################################
+# soc-victim-pod.yaml
+# A deliberately vulnerable Ubuntu pod — the Kubernetes equivalent of
+# SOC-Victim-Host EC2 instance from the baseline project.
+# Runs sshd inside a container to generate real auth.log events for testing.
+###############################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc-cluster-config
+  namespace: soc-system
+data:
+  aws_region: "eu-north-1"
+  cluster_name: "soc-eks-cluster"
+  log_group_auth: "SOC-Auth-Logs"
+  log_group_vpc: "VPC-Flow-Logs"
+  alarm_name: "SOC-Brute-Force-Alert"
+
+---
+###############################################################################
+# SOC Victim Pod — generates auth.log traffic for Fluent Bit to ship
+###############################################################################
+apiVersion: v1
+kind: Pod
+metadata:
+  name: soc-victim-pod
+  namespace: soc-system
+  labels:
+    app: soc-victim
+    role: attack-surface
+    project: aws-soc-kubernetes
+spec:
+  containers:
+    - name: soc-victim
+      image: ubuntu:24.04
+      imagePullPolicy: Always
+
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          apt-get update -qq && \
+          apt-get install -y openssh-server -qq && \
+          mkdir -p /run/sshd && \
+          echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+          echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
+          /usr/sbin/sshd -D
+
+      ports:
+        - containerPort: 22
+          name: ssh
+
+      # Explicitly NOT privileged — this pod is the target, not the sensor
+      securityContext:
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soc-victim-service
+  namespace: soc-system
+  labels:
+    app: soc-victim
+spec:
+  selector:
+    app: soc-victim
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: 22
+      protocol: TCP
+  type: ClusterIP  # Internal only — SSH exposure is within cluster only

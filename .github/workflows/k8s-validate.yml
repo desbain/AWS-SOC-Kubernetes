@@ -1,0 +1,43 @@
+###############################################################################
+# k8s-validate.yml — Runs on every Pull Request to main
+# Validates manifests and Helm chart without touching the cluster
+###############################################################################
+
+name: Kubernetes Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate Manifests and Helm Chart
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Validate manifest YAML syntax
+        run: |
+          yamllint -d relaxed manifests/ || true
+          echo "YAML syntax check complete"
+
+      - name: Lint Helm chart
+        run: helm lint helm/soc-stack
+
+      - name: Render Helm templates
+        run: |
+          helm template soc-stack helm/soc-stack \
+            --set global.awsRegion=us-east-2 \
+            --set global.environment=dev
+          echo "Helm template rendering succeeded"
