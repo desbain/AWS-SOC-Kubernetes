@@ -38,8 +38,6 @@ spec:
             - -pk
             
           env:
-            - name: FALCO_BPF_PROBE
-              value: ""
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
