@@ -10,10 +10,10 @@
 
 # Global settings applied across all components
 global:
-  awsRegion: "eu-north-1"
+  awsRegion: "us-east-2"
   environment: "dev"
   clusterName: "soc-eks-cluster"
-  owner: "[your-name]"
+  owner: "desbain"
 
 # Namespace all SOC workloads are deployed into
 namespace:
@@ -65,7 +65,7 @@ falco:
 
   image:
     repository: falcosecurity/falco-no-driver
-    tag: latest
+    tag: 0.38.0
     pullPolicy: Always
 
   driverLoader:
@@ -122,19 +122,18 @@ cloudwatchExporter:
 # -----------------------------------------------------------------------------
 socVictim:
   enabled: true
-
   image:
-    repository: ubuntu
-    tag: "24.04"
+    repository: rastasheep/ubuntu-sshd
+    tag: "18.04"
     pullPolicy: Always
 
   resources:
     requests:
-      cpu: 50m
-      memory: 64Mi
+      memory: "128Mi"
+      cpu: "100m"
     limits:
-      cpu: 100m
-      memory: 128Mi
+      memory: "512Mi"
+      cpu: "500m"
 
 # -----------------------------------------------------------------------------
 # RBAC — service accounts and cluster roles

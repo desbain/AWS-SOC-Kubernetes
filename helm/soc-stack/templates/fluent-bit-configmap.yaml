@@ -22,21 +22,11 @@ data:
     [INPUT]
         Name              tail
         Tag               soc.auth
-        Path              /var/log/auth.log
-        Parser            syslog
-        DB                /var/log/flb_auth.db
+        Path              /var/log/containers/soc-victim-pod*.log
+        Parser            docker
         Mem_Buf_Limit     5MB
         Skip_Long_Lines   On
         Refresh_Interval  10
-
-    [INPUT]
-        Name              tail
-        Tag               kube.*
-        Path              /var/log/containers/*.log
-        Parser            docker
-        DB                /var/log/flb_kube.db
-        Mem_Buf_Limit     50MB
-        Skip_Long_Lines   On
 
     [FILTER]
         Name                kubernetes
