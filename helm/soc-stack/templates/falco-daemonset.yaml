@@ -21,57 +21,31 @@ spec:
         {{- include "soc-stack.labels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ .Values.rbac.falcoServiceAccount }}
-
       tolerations:
         - effect: NoSchedule
           operator: Exists
-
       hostNetwork: true
       hostPID: true
-
-      initContainers:
-        - name: falco-driver-loader
-          image: "{{ .Values.falco.driverLoader.image.repository }}:{{ .Values.falco.driverLoader.image.tag }}"
+      containers:
+        - name: falco
+          image: falcosecurity/falco:0.38.0
           imagePullPolicy: Always
           securityContext:
             privileged: true
-          volumeMounts:
-            - name: host-modules
-              mountPath: /lib/modules
-              readOnly: true
-            - name: host-usr
-              mountPath: /usr
-
-      containers:
-        - name: falco
-          image: "{{ .Values.falco.image.repository }}:{{ .Values.falco.image.tag }}"
-          imagePullPolicy: {{ .Values.falco.image.pullPolicy }}
-
-          securityContext:
-            privileged: true
-
           args:
             - /usr/bin/falco
             - --cri=/run/containerd/containerd.sock
-            - -K=/var/run/secrets/kubernetes.io/serviceaccount/token
-            - -k=https://$(KUBERNETES_SERVICE_HOST)
-            - --k8s-node=$(NODE_NAME)
             - -pk
-            {{- if .Values.falco.output.stdout }}
-            - --log-level={{ .Values.falco.output.priority | lower }}
-            {{- end }}
-
+            
           env:
+            - name: FALCO_BPF_PROBE
+              value: ""
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: KUBERNETES_SERVICE_HOST
-              value: kubernetes.default.svc
-
           resources:
             {{- toYaml .Values.falco.resources | nindent 12 }}
-
           volumeMounts:
             - name: dev
               mountPath: /host/dev
@@ -87,13 +61,15 @@ spec:
             - name: host-usr
               mountPath: /host/usr
               readOnly: true
+            - name: containerd-socket
+              mountPath: /run/containerd/containerd.sock
+            - name: falco-config
+              mountPath: /etc/falco/config.d/falco-override.yaml
+              subPath: falco.yaml
             {{- if .Values.falco.customRules.enabled }}
             - name: falco-rules
               mountPath: /etc/falco/rules.d/
             {{- end }}
-            - name: containerd-socket
-              mountPath: /run/containerd/containerd.sock
-
       volumes:
         - name: dev
           hostPath: { path: /dev }
@@ -105,14 +81,16 @@ spec:
           hostPath: { path: /lib/modules }
         - name: host-usr
           hostPath: { path: /usr }
+        - name: containerd-socket
+          hostPath:
+            path: /run/containerd/containerd.sock
+            type: Socket
+        - name: falco-config
+          configMap:
+            name: falco-config
         {{- if .Values.falco.customRules.enabled }}
         - name: falco-rules
           configMap:
             name: falco-rules
         {{- end }}
-        - name: containerd-socket
-          hostPath:
-            path: /run/containerd/containerd.sock
-            type: Socket
-
 {{- end }}

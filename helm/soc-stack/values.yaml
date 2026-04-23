@@ -10,10 +10,10 @@
 
 # Global settings applied across all components
 global:
-  awsRegion: "eu-north-1"
+  awsRegion: "us-east-2"
   environment: "dev"
   clusterName: "soc-eks-cluster"
-  owner: "[your-name]"
+  owner: "desbain"
 
 # Namespace all SOC workloads are deployed into
 namespace:
@@ -65,7 +65,7 @@ falco:
 
   image:
     repository: falcosecurity/falco-no-driver
-    tag: latest
+    tag: 0.38.0
     pullPolicy: Always
 
   driverLoader:

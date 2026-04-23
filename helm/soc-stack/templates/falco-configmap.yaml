@@ -1,8 +1,30 @@
+{{- if .Values.falco.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-config
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "soc-stack.labels" . | nindent 4 }}
+data:
+  falco.yaml: |
+    engine:
+      kind: nodriver
+    rules_files:
+      - /etc/falco/falco_rules.yaml
+      - /etc/falco/falco_rules.local.yaml
+      - /etc/falco/rules.d
+    json_output: false
+    log_stderr: true
+    log_syslog: false
+    log_level: warning
+    buffered_outputs: false
+    stdout_output:
+      enabled: true
+{{- end }}
 {{- if and .Values.falco.enabled .Values.falco.customRules.enabled }}
-###############################################################################
-# falco-configmap.yaml — SOC custom detection rules rendered via Helm
-# The detection threshold (failedSshThreshold) is injected from values.yaml
-###############################################################################
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,11 +47,7 @@ data:
         spawned_process and
         proc.name = "sshd" and
         proc.args contains "Invalid user"
-      output: >
-        SSH brute force attempt detected
-        (user=%user.name ip=%fd.rip port=%fd.rport
-        node=%k8s.node.name pod=%k8s.pod.name namespace=%k8s.ns.name
-        env={{ .Values.global.environment }})
+      output: "SSH brute force attempt detected (user=%user.name ip=%fd.rip port=%fd.rport pod=%k8s.pod.name namespace=%k8s.ns.name)"
       priority: WARNING
       tags: [soc, ssh, brute_force, mitre_credential_access]
 
@@ -41,12 +59,7 @@ data:
         spawned_process and container and
         proc.name in (bash, sh, zsh, dash, ksh) and
         not proc.pname in (containerd, dockerd, runc)
-      output: >
-        Shell spawned in container
-        (shell=%proc.name parent=%proc.pname
-        image=%container.image.repository
-        pod=%k8s.pod.name namespace=%k8s.ns.name
-        node=%k8s.node.name)
+      output: "Shell spawned in container (shell=%proc.name parent=%proc.pname image=%container.image.repository pod=%k8s.pod.name namespace=%k8s.ns.name)"
       priority: CRITICAL
       tags: [soc, container_escape, shell, mitre_execution]
 
@@ -54,10 +67,7 @@ data:
       desc: Privilege escalation attempt — sudo used inside a container.
       condition: >
         spawned_process and container and proc.name = "sudo"
-      output: >
-        Sudo used inside container
-        (user=%user.name container=%container.name
-        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      output: "Sudo used inside container (user=%user.name container=%container.name pod=%k8s.pod.name namespace=%k8s.ns.name)"
       priority: ERROR
       tags: [soc, privilege_escalation, sudo, mitre_privilege_escalation]
 
@@ -67,10 +77,7 @@ data:
         outbound and
         k8s.ns.name = "{{ .Values.namespace.name }}" and
         not proc.name in (fluent-bit, falco, aws-cloudwatch-exporter)
-      output: >
-        Unexpected outbound from SOC namespace
-        (proc=%proc.name connection=%fd.name
-        pod=%k8s.pod.name node=%k8s.node.name)
+      output: "Unexpected outbound from SOC namespace (proc=%proc.name connection=%fd.name pod=%k8s.pod.name)"
       priority: WARNING
       tags: [soc, network, c2, mitre_command_and_control]
 
@@ -80,11 +87,7 @@ data:
         open_write and
         fd.name in (/var/log/auth.log, /var/log/syslog, /var/log/kern.log) and
         not proc.name in (syslog, rsyslog, journald, fluent-bit)
-      output: >
-        Audit log tampered
-        (proc=%proc.name file=%fd.name user=%user.name
-        pod=%k8s.pod.name namespace=%k8s.ns.name)
+      output: "Audit log tampered (proc=%proc.name file=%fd.name user=%user.name pod=%k8s.pod.name namespace=%k8s.ns.name)"
       priority: CRITICAL
       tags: [soc, log_tampering, defense_evasion, mitre_defense_evasion]
-
 {{- end }}
