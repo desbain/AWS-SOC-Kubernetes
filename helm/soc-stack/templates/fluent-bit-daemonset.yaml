@@ -53,8 +53,6 @@ spec:
               readOnly: true
             - name: fluent-bit-config
               mountPath: /fluent-bit/etc/
-            - name: flb-state
-              mountPath: /var/log/flb_state
 
       volumes:
         - name: varlog
@@ -66,10 +64,6 @@ spec:
         - name: fluent-bit-config
           configMap:
             name: fluent-bit-config
-        - name: flb-state
-          hostPath:
-            path: /var/log/flb_state
-            type: DirectoryOrCreate
 
       securityContext:
         runAsUser: 0

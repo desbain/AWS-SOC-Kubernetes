@@ -40,8 +40,8 @@ spec:
       command: ["/bin/bash", "-c"]
       args:
         - |
-          apt-get update -qq && \
-          apt-get install -y openssh-server -qq && \
+          /usr/sbin/sshd -D -e 2>&1
+        - |
           mkdir -p /run/sshd && \
           echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
           /usr/sbin/sshd -D
